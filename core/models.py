@@ -17,6 +17,11 @@ LABEL_CHOICE = (
     ('D', 'danger')
 )
 
+ADDRESS_CHOICES = (
+    ('B', 'Billing'),
+    ('S' , 'Shipping')
+)
+
 class Item(models.Model):
     title = models.CharField(max_length=100)
     price = models.FloatField()
@@ -74,11 +79,14 @@ class Order(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL,
                              on_delete=models.CASCADE)
     start_date = models.DateTimeField(auto_now_add=True)
-    ref_code = models.CharField(max_length=20)
+    ref_code = models.CharField(max_length=20, null=True, blank=True)
     items = models.ManyToManyField(OrderItem)
     ordered = models.BooleanField(default=False)
     ordered_date = models.DateTimeField()
-    billing_address = models.ForeignKey('BillingAddress', on_delete=models.SET_NULL, null=True, blank=True)
+
+    billing_address = models.ForeignKey('Address', on_delete=models.SET_NULL, related_name = 'billing_address', null=True, blank=True)
+    shipping_address  = models.ForeignKey('Address', on_delete=models.SET_NULL, related_name = 'shipping_address', null=True, blank=True)
+
     payment = models.ForeignKey('Payment', on_delete=models.SET_NULL, null=True, blank=True)
     cupon = models.ForeignKey('Cupon', on_delete=models.SET_NULL, null=True, blank=True)
     being_delivered = models.BooleanField(default=False)
@@ -97,13 +105,18 @@ class Order(models.Model):
             total -= self.cupon.amount
         return total
 
-class BillingAddress(models.Model):
+class Address(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL,
                              on_delete=models.CASCADE)
     street_address = models.CharField(max_length=100)
-    apartment_address = models.CharField(max_length=100, null=True, blank=True)
+    apartment_address = models.CharField(max_length=100)
     country = CountryField(multiple=False)
     zip = models.CharField(max_length=100)
+    address_type = models.CharField(max_length = 1, choices=ADDRESS_CHOICES)
+    default = models.BooleanField(default=False)
+
+    class Meta:
+        verbose_name_plural = 'Addresses'
 
     def __str__(self):
         return self.user.username
