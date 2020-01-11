@@ -74,12 +74,17 @@ class Order(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL,
                              on_delete=models.CASCADE)
     start_date = models.DateTimeField(auto_now_add=True)
+    ref_code = models.CharField(max_length=20)
     items = models.ManyToManyField(OrderItem)
     ordered = models.BooleanField(default=False)
     ordered_date = models.DateTimeField()
     billing_address = models.ForeignKey('BillingAddress', on_delete=models.SET_NULL, null=True, blank=True)
     payment = models.ForeignKey('Payment', on_delete=models.SET_NULL, null=True, blank=True)
     cupon = models.ForeignKey('Cupon', on_delete=models.SET_NULL, null=True, blank=True)
+    being_delivered = models.BooleanField(default=False)
+    received = models.BooleanField(default=False)
+    refund_requested = models.BooleanField(default=False)
+    refund_granted = models.BooleanField(default=False)
 
     def __str__(self):
         return self.user.username
@@ -119,3 +124,12 @@ class Cupon(models.Model):
 
     def __str__(self):
         return self.code
+
+class Refund(models.Model):
+    order = models.ForeignKey(Order, on_delete=models.CASCADE)
+    reason = models.TextField()
+    accepted = models.BooleanField(default=False)
+    email = models.EmailField()
+
+    def __str__(self):
+        return f'{self.pk}'
