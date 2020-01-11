@@ -1,1 +1,5 @@
 env
+__pycache__/
+*.pyc
+media_root
+static_root

@@ -6,8 +6,8 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.shortcuts import render, get_object_or_404, redirect
 from django.views.generic import ListView, DetailView, View
 from django.utils import timezone
-from .models import Item, Order, OrderItem, BillingAddress, Payment
-from .forms import CheckoutForm
+from .models import Item, Order, OrderItem, BillingAddress, Payment, Cupon
+from .forms import CheckoutForm, CuponForm
 
 # Create your views here.
 
@@ -18,11 +18,22 @@ stripe.api_key = settings.STRIPE_SECRET_KEY
 
 class CheckoutView(View):
     def get(self, *args, **kwargs):
-        form = CheckoutForm()
-        context = {
-            'form' : form,
-        }
-        return render(self.request, 'checkout-page.html', context)
+        try:
+            order = Order.objects.get(user = self.request.user, ordered=False)
+            form = CheckoutForm()
+            context = {
+                'form' : form,
+                'order' : order,
+                'cuponForm' : CuponForm,
+                'DISPLAY_CUPON_FORM': True,
+            }
+            return render(self.request, 'checkout-page.html', context)
+
+        except ObjectDoesNotExist:
+            messages.error(self.request, "You do not have an active order")
+            return redirect("/")
+
+        
     
     def post(self, *args, **kwargs):
         form = CheckoutForm(self.request.POST or None)
@@ -65,10 +76,15 @@ class CheckoutView(View):
 class PaymentView(View):
     def get(self, *args, **kwargs):
         order = Order.objects.get(user = self.request.user, ordered = False)
-        context = {
-            'order' : order,
-        }
-        return render(self.request, 'payment.html', context)
+        if order.billing_address:
+            context = {
+                'order' : order,
+                'DISPLAY_CUPON_FORM': False,
+            }
+            return render(self.request, 'payment.html', context)
+        else:
+            messages.error(self.request, "You have not added a billing address")
+            return redirect('core:checkout')
     
     def post(self, *args, **kwargs):
         order = Order.objects.get(user = self.request.user, ordered = False)
@@ -88,7 +104,12 @@ class PaymentView(View):
             payment.user = self.request.user
             payment.amount = order.get_total()
             payment.save()
-            
+
+            order_items = order.items.all()
+            order_items.update(ordered=True)
+            for item in order_items:
+                item.save()
+        
             order.ordered = True
             order.payment = payment
             order.save()
@@ -134,9 +155,7 @@ class PaymentView(View):
         # Something else happened, completely unrelated to Stripe
             messages.error(self.request, "A serious error has occurred. We have been notified.")
             return redirect("/")
-
-
-        
+       
 class HomeView(ListView):
     model = Item
     paginate_by = 1
@@ -155,8 +174,37 @@ class OrderSumaryView(LoginRequiredMixin, View):
                 }
             return render(self.request, 'order-sumary.html', context)
         except ObjectDoesNotExist:
-            messages.error(self.request, "You do not have an active error")
+            messages.error(self.request, "You do not have an active order")
             return redirect("/")
+
+def get_cupon(request, code):
+    try:
+        cupon = Cupon.objects.get(code = code)
+        return cupon
+    except ObjectDoesNotExist:
+        messages.warning(request, "The cupon does not exists")
+        redirect('core:order-sumary')
+
+class AddCuponView(View):
+    def post(self, *args, **kwargs):
+        cupon_form = CuponForm(self.request.POST or None)
+        if cupon_form.is_valid():
+            code = cupon_form.cleaned_data.get('code')
+            cupon = get_cupon(self.request, code)
+            try:
+                order = Order.objects.get(user = self.request.user, ordered=False)
+                order.cupon = cupon
+                order.save()
+                
+                messages.success(self.request, "The cupon was accepted!")
+                return redirect('core:checkout')
+            except ObjectDoesNotExist:
+                messages.error(self.request, "You do not have an active order")
+                return redirect("/")
+        else:
+            messages.warning(self.request, "This cupon is not valid!")
+            return redirect('core:checkout')
+
 
 @login_required            
 def add_to_cart(request, slug):
